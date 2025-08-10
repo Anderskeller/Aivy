@@ -1,0 +1,97 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enable pgvector extension and define models
+// Note: Ensure pgvector is enabled in your Postgres (Supabase) instance
+// using: create extension if not exists vector;
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  image        String?
+  createdAt    DateTime  @default(now())
+  tone         String    @default("professional_friendly")
+  timezone     String    @default("Australia/Melbourne")
+  gmailWriteOK Boolean   @default(false)
+  Messages     Message[]
+  accounts     Account[]
+  sessions     Session[]
+}
+
+model Message {
+  id          String   @id // gmail message id
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  label       String?  // inferred category
+  subject     String?
+  sentAt      DateTime?
+  cleanedBody String
+  // Stored as pgvector in DB via migration SQL. Prisma treats it as Unsupported.
+  embedding   Unsupported("vector")
+  createdAt   DateTime @default(now())
+}
+
+model DraftLog {
+  id        String   @id @default(cuid())
+  userId    String
+  threadId  String
+  subject   String?
+  bodyMd    String
+  inputs    Json
+  outputs   Json
+  createdAt DateTime @default(now())
+}
+
+// NextAuth (Prisma Adapter) models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Index for vector similarity search
+// Run in DB: CREATE INDEX IF NOT EXISTS message_embedding_idx ON "Message" USING hnsw (embedding vector_cosine_ops);
